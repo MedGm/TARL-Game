@@ -6,11 +6,35 @@ EditorBuildSettings:
   serializedVersion: 2
   m_Scenes:
   - enabled: 1
-    path: Assets/Scenes/SampleScene.unity
+    path: Assets/Scenes/TitleScene.unity
+    guid: 356f032d043089139b289d3661cf9ebb
+  - enabled: 1
+    path: Assets/Scenes/overworldScene.unity
     guid: 8c9cfa26abfee488c85f1582747f6a02
   - enabled: 1
     path: Assets/Scenes/DungeonScene.unity
     guid: e1429d114db39e7b5880a1babea450b0
+  - enabled: 1
+    path: Assets/Scenes/SoapScene.unity
+    guid: 7f9ed126cb1b82ad199fb60deb72310e
+  - enabled: 1
+    path: Assets/Scenes/DungeonScene2.unity
+    guid: 46df4d26ef32a1ade8ed52a64e1cdf11
+  - enabled: 1
+    path: Assets/Scenes/SoapScene2.unity
+    guid: 9fe7674b6b44841eeb438b693ab18fe3
+  - enabled: 1
+    path: Assets/Scenes/DungeonScene3.unity
+    guid: 2e5a41dae713a40ac94905e1bb1b1071
+  - enabled: 1
+    path: Assets/Scenes/SoapScene3.unity
+    guid: d1a5334b2ebd875308f88e883cf9a62e
+  - enabled: 1
+    path: Assets/Scenes/PortalScene.unity
+    guid: 608fa3ba7ef97535f93647c389af57e0
+  - enabled: 1
+    path: Assets/Scenes/FinalScene.unity
+    guid: 41eab0810cafa9659a07a322b0f52143
   m_configObjects:
     com.unity.adaptiveperformance.simulator.provider_settings: {fileID: 11400000, guid: f930854d49faa5154a486a7aefec9014, type: 2}
     com.unity.input.settings.actions: {fileID: -944628639613478452, guid: 2bcd2660ca9b64942af0de543d8d7100, type: 3}

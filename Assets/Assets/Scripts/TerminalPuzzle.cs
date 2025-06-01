@@ -19,7 +19,6 @@ public class TerminalPuzzle : MonoBehaviour
     [SerializeField] private Button submitButton; // Button to submit answer
     [SerializeField] private Button clearButton; // Button to clear answer
     [SerializeField] private int decoyWordCount = 3; // Number of extra decoy words
-    [SerializeField] private float buttonSpacing = 10f; // Space between buttons
     
     [Header("Timer & Attempts")]
     [SerializeField] private TMP_Text timerText;
@@ -41,6 +40,14 @@ public class TerminalPuzzle : MonoBehaviour
     [SerializeField] private int maxRandomNumber = 9999;
     [SerializeField] private bool useFrench = true;
     [SerializeField] private Canvas terminalCanvas; // Reference to the parent canvas
+
+    [Header("Post-Terminal UI")]
+    [SerializeField] private Canvas keyAcquiredCanvas; // Overlay canvas for key acquired
+    [SerializeField] private Image keyBackgroundImage; // Background image (dungeon background)
+    [SerializeField] private Image keyImage;           // Key image (centered)
+    [SerializeField] private TMP_Text keyMessageText;  // Message text
+    [SerializeField] private Button returnButton; // Add this in the inspector
+    [SerializeField] private string previousSceneName = "overworldScene"; // Name of the previous scene to return to
 
     // The correct answer
     private string correctAnswer = "";
@@ -450,7 +457,7 @@ public class TerminalPuzzle : MonoBehaviour
     {
         yield return new WaitForSeconds(terminalDisappearDelay);
         
-        // Just deactivate the terminal canvas
+        // Deactivate the terminal canvas
         if (terminalCanvas != null)
         {
             terminalCanvas.gameObject.SetActive(false);
@@ -459,6 +466,64 @@ public class TerminalPuzzle : MonoBehaviour
         {
             // Fallback to just disabling this GameObject
             gameObject.SetActive(false);
+        }
+
+        // Mark dungeon as completed and increment key count
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.MarkDungeonCompleted("dungeon1");
+        }
+
+        // Show "key acquired" overlay
+        ShowKeyAcquiredOverlay();
+    }
+
+    private void ShowKeyAcquiredOverlay()
+    {
+        if (keyAcquiredCanvas != null)
+        {
+            keyAcquiredCanvas.gameObject.SetActive(true);
+
+            // Set background image if needed (should already be set in the editor)
+            if (keyBackgroundImage != null)
+                keyBackgroundImage.enabled = true;
+
+            // Set key image (should already be set in the editor)
+            if (keyImage != null)
+                keyImage.enabled = true;
+
+            // Set message
+            if (keyMessageText != null)
+            {
+                keyMessageText.text = "Nous avons obtenu la clé de ce donjon !";
+                keyMessageText.fontSize = 64;
+                keyMessageText.alignment = TextAlignmentOptions.Center;
+                keyMessageText.color = new Color(1f, 0.85f, 0.2f); // Gold/yellow
+                keyMessageText.fontStyle = FontStyles.Bold | FontStyles.UpperCase;
+            }
+
+            if (returnButton != null)
+            {
+                returnButton.gameObject.SetActive(true);
+                returnButton.onClick.RemoveAllListeners();
+                returnButton.onClick.AddListener(ReturnToPreviousScene);
+            }
+        }
+    }
+
+    private void ReturnToPreviousScene()
+    {
+        UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
+        UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
+    }
+
+    private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
+    {
+        if (scene.name == previousSceneName)
+        {
+            if (GameManager.Instance != null)
+                GameManager.Instance.TrySpawnBubbleSoapChaser();
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnoverworldSceneLoaded;
         }
     }
     

@@ -56,5 +56,6 @@
         "temp/": true,
         "Temp/": true
     },
-    "dotnet.defaultSolution": "TARL Game.sln"
+    "dotnet.defaultSolution": "TARL Game.sln",
+    "FSharp.suggestGitignore": false
 }

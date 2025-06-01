@@ -10,19 +10,33 @@ public class DungeonEntrance : MonoBehaviour
     [Header("References")]
     [Tooltip("Assign your TMP_Text component here in the inspector")]
     [SerializeField] private TMP_Text promptText;
-    
+    public Button enterButton; // Assign in Inspector
+
     [Header("Settings")]
-    [SerializeField] private string frenchPromptMessage = "Appuyez sur ENTRÉE pour entrer dans le donjon";
-    [SerializeField] private string dungeonSceneName = "DungeonScene";
-    [SerializeField] private float detectionRadius = 2f;
-    
+    public string frenchPromptMessage = "Appuyez sur ENTRÉE pour entrer dans le donjon";
+    public string dungeonSceneName = "DungeonScene"; // <-- set this per entrance in Inspector (DungeonScene, DungeonScene2, DungeonScene3)
+    public float detectionRadius = 2f;
+
     [Header("Text Styling")]
     [SerializeField] private Color textColor = new Color(1f, 0.9f, 0.2f); // Golden yellow
     [SerializeField] private Color outlineColor = new Color(0.5f, 0.1f, 0f); // Dark red/brown
     [SerializeField] private float outlineThickness = 0.2f;
-    
+
+    // Minimap icon (assign a sprite in the inspector, set to Minimap layer)
+    public GameObject minimapIcon;
+
     private bool playerNearby = false;
     private Transform playerTransform;
+
+    // --- NEW: DungeonEntrance registration ---
+    private void OnEnable()
+    {
+        DungeonManager.RegisterEntrance(this);
+    }
+    private void OnDisable()
+    {
+        DungeonManager.UnregisterEntrance(this);
+    }
     
     private void Awake()
     {
@@ -57,9 +71,9 @@ public class DungeonEntrance : MonoBehaviour
         if (promptText != null)
         {
             // Apply styling
-            promptText.color = textColor;
+            promptText.color = new Color(textColor.r, textColor.g, textColor.b, 1f); // Ensure alpha is 1
             promptText.text = frenchPromptMessage;
-            
+
             // Only set outline properties if the component supports it
             try {
                 promptText.outlineWidth = outlineThickness;
@@ -68,7 +82,7 @@ public class DungeonEntrance : MonoBehaviour
             catch {
                 Debug.LogWarning("This TextMeshPro component doesn't support outline properties.");
             }
-            
+
             // Hide initially
             promptText.gameObject.SetActive(false);
             Debug.Log("Text component configured successfully: " + promptText.gameObject.name);
@@ -78,6 +92,18 @@ public class DungeonEntrance : MonoBehaviour
             Debug.LogWarning("No TMP_Text found! The prompt will not be displayed. Please create a UI Canvas with a TextMeshPro Text element.");
         }
         
+        // Hide enter button initially and always assign the listener
+        if (enterButton != null)
+        {
+            enterButton.gameObject.SetActive(false);
+            enterButton.onClick.RemoveAllListeners();
+            enterButton.onClick.AddListener(() => {
+                // No need to set dungeonId anymore
+                Debug.Log("[DungeonEntrance] Enter button pressed on: " + gameObject.name + " (scene=" + dungeonSceneName + ")");
+                DungeonManager.EnterDungeon(this);
+            });
+        }
+
         // Find player by tag
         GameObject player = GameObject.FindGameObjectWithTag("Player");
         if (player != null)
@@ -88,6 +114,9 @@ public class DungeonEntrance : MonoBehaviour
         {
             Debug.LogError("No GameObject with 'Player' tag found!");
         }
+
+        if (minimapIcon != null)
+            minimapIcon.transform.SetParent(transform, false);
     }
 
     private void Update()
@@ -112,12 +141,6 @@ public class DungeonEntrance : MonoBehaviour
                 }
             }
         }
-
-        // Check for Enter key when player is nearby
-        if (playerNearby && (Input.GetKeyDown(KeyCode.Return) || Input.GetKeyDown(KeyCode.KeypadEnter)))
-        {
-            EnterDungeon();
-        }
     }
 
     private void OnTriggerEnter2D(Collider2D other)
@@ -140,14 +163,32 @@ public class DungeonEntrance : MonoBehaviour
 
     private void ShowPrompt()
     {
+        bool unlocked = true;
+        if (GameManager.Instance != null)
+        {
+            // Only allow entry if this dungeon is unlocked (optional: keep if you want sequential unlock)
+            if (dungeonSceneName == "DungeonScene")
+                unlocked = true;
+            else if (dungeonSceneName == "DungeonScene2")
+                unlocked = GameManager.Instance.IsDungeonCompleted("dungeon1");
+            else if (dungeonSceneName == "DungeonScene3")
+                unlocked = GameManager.Instance.IsDungeonCompleted("dungeon2");
+            // Add more if you have more dungeons/scenes
+        }
+
         if (promptText != null)
         {
+            Color c = promptText.color;
+            c.a = 1f;
+            promptText.color = c;
+            promptText.text = unlocked ? frenchPromptMessage : "Ce donjon est verrouillé pour l'instant.";
             promptText.gameObject.SetActive(true);
             StartCoroutine(AnimateTextIn());
         }
-        else
+        if (enterButton != null)
         {
-            Debug.Log("Player near dungeon entrance - would show prompt if text component was available");
+            enterButton.gameObject.SetActive(true);
+            enterButton.interactable = unlocked;
         }
     }
     
@@ -186,10 +227,39 @@ public class DungeonEntrance : MonoBehaviour
             promptText.gameObject.SetActive(false);
             StopAllCoroutines();
         }
+        if (enterButton != null)
+        {
+            enterButton.gameObject.SetActive(false);
+            enterButton.interactable = false;
+        }
+    }
+
+    private void UpdatePlayerNearby()
+    {
+        // Always recalculate playerNearby based on current distance
+        if (playerTransform != null)
+        {
+            float distance = Vector2.Distance(transform.position, playerTransform.position);
+            playerNearby = distance <= detectionRadius;
+        }
+    }
+
+    public void TryEnter()
+    {
+        if (playerNearby)
+            EnterDungeon();
     }
 
     private void EnterDungeon()
     {
+        Debug.Log("[DungeonEntrance] EnterDungeon called.");
+
+        // Save player position before entering
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.lastPlayerPosition = playerTransform.position;
+        }
+        Debug.Log("[DungeonEntrance] Loading scene: " + dungeonSceneName);
         SceneManager.LoadScene(dungeonSceneName);
     }
     
