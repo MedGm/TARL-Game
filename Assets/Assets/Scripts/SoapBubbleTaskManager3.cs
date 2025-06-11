@@ -13,7 +13,7 @@ public class SoapBubbleTaskManager3 : MonoBehaviour
     public TMP_Text timerText;
 
     public string[] placeValueNames = {
-        "Ones", "Tens", "Hundreds", "Thousands", "TenThousands", "HundredThousands", "Millions"
+        "Unités", "Dizaines", "Centaines", "Milliers", "DixMilliers", "CentMilliers", "Millions"
     };
     public float promptDuration = 5f;
     public float selectionTime = 8f;
@@ -131,13 +131,17 @@ public class SoapBubbleTaskManager3 : MonoBehaviour
         foreach (var btn in bubbleButtons)
             btn.interactable = false;
 
+        // FIXED: Set prompt and keep it visible throughout the first step
         if (promptText != null)
         {
             promptText.text = "Les bulles sont furieuses ! Pop la plus petite et la plus grande unité.";
             promptText.gameObject.SetActive(true);
+            // REMOVED: Do not clear the prompt text anymore
         }
 
         yield return new WaitForSeconds(promptDuration);
+
+        // REMOVED: No longer clear the prompt text here
 
         int smallestIdx = 0;
         int biggestIdx = digitCount - 1;
@@ -192,34 +196,35 @@ public class SoapBubbleTaskManager3 : MonoBehaviour
 
         yield return new WaitForSeconds(1f);
 
+        // FIXED: Set prompt and keep it visible throughout the second step
         if (promptText != null)
         {
             promptText.text = $"Bravo ! Les bulles t'ont donné deux nombres : <b>{number1}</b> et <b>{number2}</b>.\n" +
                 $"Trouve l'unité où les deux nombres ont le même chiffre et pop la bulle correspondante.";
             promptText.gameObject.SetActive(true);
+            // REMOVED: Do not clear the prompt text anymore
         }
 
         yield return new WaitForSeconds(promptDuration);
 
-        // --- FIXED MATCHING LOGIC: Match the correct place values ---
+        // Update prompt if multiple matching positions
         List<int> correctIndices = new List<int>();
         for (int i = 0; i < digitCount; i++)
         {
             if (digits1[i] == digits2[i])
             {
-                // The correct UI button index is (digitCount - 1 - i)
-                // This maps the digit position to the correct place value
                 int placeValueIndex = digitCount - 1 - i;
                 correctIndices.Add(placeValueIndex);
                 Debug.Log($"[SoapBubbleTaskManager3] Position {i} has matching digit {digits1[i]} → UI Button {placeValueIndex} ({placeValueNames[placeValueIndex]})");
             }
         }
 
-        // Update prompt if multiple matching positions
         if (promptText != null && correctIndices.Count > 1)
         {
             promptText.text += $"\n<b>Attention :</b> Il y a plusieurs unités où les deux nombres ont le même chiffre. Pop <b>toutes</b> les bulles correspondantes.";
         }
+
+        // REMOVED: No longer clear the prompt text here
 
         // Reset for final step
         waitingForSelection = true;
@@ -370,23 +375,73 @@ public class SoapBubbleTaskManager3 : MonoBehaviour
 
         completedTasks++;
 
+        // FIXED: Only clear prompt when task is finished
         if (promptText != null)
             promptText.text = success ? "Bravo, tu as réussi !" : "Raté !";
 
-        UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-        StartCoroutine(ReturnTooverworldSceneAfterDelay(2.5f));
+        // Save to session manager if in test mode
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            string difficulty = "hard"; // SoapScene3 = hard
+            
+            // Create units answer based on the two numbers used
+            var unitsAnswer = new AnswerModel.IdentifyUnitsAnswers.UnitsAnswer
+            {
+                units = number1 % 10,
+                tens = (number1 / 10) % 10,
+                hundreds = (number1 / 100) % 10,
+                thousands = (number1 / 1000) % 10
+            };
+            
+            GameSessionManager.Instance.RegisterTaskResult(
+                "identifyunits", 
+                difficulty, 
+                unitsAnswer, 
+                success, 
+                1, 
+                success ? 100 : 0
+            );
+            
+            if (success)
+            {
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
+        }
+
+        // FIXED: Check if in free roam mode and return to appropriate scene
+        string returnScene = FreeRoamManager.GetReturnScene();
+        Debug.Log($"[SoapBubbleTaskManager3] Returning to: {returnScene} (Free roam active: {FreeRoamManager.IsFreeRoamActive})");
+
+        // Don't register scene loaded handler if returning to title scene
+        if (returnScene == "overworldScene")
+        {
+            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
+        }
+        
+        StartCoroutine(ReturnToSceneAfterDelay(2.5f, returnScene));
     }
 
-    private IEnumerator ReturnTooverworldSceneAfterDelay(float delay)
+    private IEnumerator ReturnToSceneAfterDelay(float delay, string sceneName)
     {
         yield return new WaitForSeconds(delay);
-        UnityEngine.SceneManagement.SceneManager.LoadScene(overworldSceneName);
+        
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(sceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+        }
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
     {
         if (scene.name == overworldSceneName)
         {
+            // FIXED: Re-add bubble spawning trigger
+            if (GameManager.Instance != null)
+                GameManager.Instance.TrySpawnBubbleSoapChaser();
             UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnoverworldSceneLoaded;
         }
     }

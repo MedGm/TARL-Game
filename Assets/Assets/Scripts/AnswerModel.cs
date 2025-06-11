@@ -8,52 +8,88 @@ public class AnswerModel
     public string studentId;
     public string date;
     public int totalScore;
+    public string idTeacher;
+    public bool isSent;
     public Answers answers;
+    public Statistics statistics;
 
     [Serializable]
     public class Answers
     {
-        public FindComposition findcomposition;
-        public WriteTheNumber writetheNumber;
-        public IdentifyUnits identifyUnits;
+        public FindCompositionAnswers findcomposition;
+        public WriteNumberAnswers WritetheFollowingNumberinLetters;
+        public IdentifyUnitsAnswers IdentifthUnitsTensHundredsandThousands;
     }
 
     [Serializable]
-    public class FindComposition
+    public class FindCompositionAnswers
     {
-        public int number;
-        public List<int> studentAnswer;
-        public int attemptsUsed;
-        public bool isCorrect;
-        public int score;
+        public DifficultyAnswer easy;
+        public DifficultyAnswer medium;
+        public DifficultyAnswer hard;
+
+        [Serializable]
+        public class DifficultyAnswer
+        {
+            public List<int> studentAnswer;
+            public int attemptsUsed;
+            public bool isCorrect;
+            public int score;
+            public int time; // ADDED: Time field to match Firebase structure
+        }
     }
 
     [Serializable]
-    public class WriteTheNumber
+    public class WriteNumberAnswers
     {
-        public int number;
-        public string studentAnswer;
-        public bool isCorrect;
-        public int attemptsUsed;
-        public int score;
+        public DifficultyAnswer easy;
+        public DifficultyAnswer medium;
+        public DifficultyAnswer hard;
+
+        [Serializable]
+        public class DifficultyAnswer
+        {
+            public List<string> studentAnswer;
+            public bool isCorrect;
+            public int attemptsUsed;
+            public int score;
+            public int time; // ADDED: Time field
+        }
     }
 
     [Serializable]
-    public class IdentifyUnits
+    public class IdentifyUnitsAnswers
     {
-        public int number;
-        public UnitsAnswer studentAnswer;
-        public bool isCorrect;
-        public int attemptsUsed;
-        public int score;
+        public DifficultyAnswer easy;
+        public DifficultyAnswer medium;
+        public DifficultyAnswer hard;
+
+        [Serializable]
+        public class DifficultyAnswer
+        {
+            public UnitsAnswer studentAnswer;
+            public bool isCorrect;
+            public int attemptsUsed;
+            public int score;
+            public int time; // ADDED: Time field
+        }
+
+        [Serializable]
+        public class UnitsAnswer
+        {
+            public int units;
+            public int tens;
+            public int hundreds;
+            public int thousands;
+        }
     }
 
     [Serializable]
-    public class UnitsAnswer
+    public class Statistics
     {
-        public int units;
-        public int tens;
-        public int hundreds;
-        public int thousands;
+        public int totalTimeSpent;
+        public int totalAttemptsUsed;
+        public int correctAnswersCount;
+        public int incorrectAnswersCount;
     }
 }

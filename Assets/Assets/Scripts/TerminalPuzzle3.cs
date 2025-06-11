@@ -111,9 +111,30 @@ public class TerminalPuzzle3 : MonoBehaviour
 
     private void GenerateNewProblem()
     {
-        // Pick a random context problem
-        System.Random rng = new System.Random();
-        currentProblem = contextProblems[rng.Next(contextProblems.Count)];
+        // Check if in test mode and get configuration
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            string difficulty = "hard"; // Third dungeon = hard
+            var config = GameSessionManager.Instance.GetWriteNumberConfig(difficulty);
+            if (config != null)
+            {
+                // Use the configured number instead of context problems
+                currentProblem = new ContextProblem
+                {
+                    contextText = $"Écrivez le nombre {config.number} en toutes lettres.",
+                    answer = config.number
+                };
+                timeLimit = config.time;
+                maxAttempts = config.attemptsAllowed;
+                Debug.Log($"[TerminalPuzzle3] Using test config: number={config.number}, time={config.time}, attempts={config.attemptsAllowed}");
+            }
+        }
+        else
+        {
+            // Pick a random context problem
+            System.Random rng = new System.Random();
+            currentProblem = contextProblems[rng.Next(contextProblems.Count)];
+        }
 
         // Show the context as instruction
         if (instructionText != null)
@@ -305,6 +326,21 @@ public class TerminalPuzzle3 : MonoBehaviour
             }
             DisableAllButtons();
             puzzleSolved = true;
+            
+            // Save result to session manager if in test mode
+            if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            {
+                GameSessionManager.Instance.RegisterTaskResult(
+                    "writenumber", 
+                    "hard", 
+                    selectedWords, 
+                    true, 
+                    maxAttempts - remainingAttempts + 1, 
+                    100
+                );
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
+            
             StartCoroutine(DisappearTerminal());
         }
         else
@@ -313,6 +349,19 @@ public class TerminalPuzzle3 : MonoBehaviour
             UpdateAttemptsText();
             if (remainingAttempts <= 0)
             {
+                // Save failed result
+                if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+                {
+                    GameSessionManager.Instance.RegisterTaskResult(
+                        "writenumber", 
+                        "hard", 
+                        selectedWords, 
+                        false, 
+                        maxAttempts, 
+                        0
+                    );
+                }
+                
                 AllAttemptsUsed();
                 return;
             }
@@ -353,8 +402,11 @@ public class TerminalPuzzle3 : MonoBehaviour
             terminalCanvas.gameObject.SetActive(false);
         else
             gameObject.SetActive(false);
-        if (GameManager.Instance != null)
-            GameManager.Instance.MarkDungeonCompleted("dungeon3");
+        
+        // REMOVED: Don't mark dungeon as completed here anymore
+        // if (GameManager.Instance != null)
+        //     GameManager.Instance.MarkDungeonCompleted("dungeon3");
+        
         ShowKeyAcquiredOverlay();
     }
 
@@ -386,8 +438,38 @@ public class TerminalPuzzle3 : MonoBehaviour
 
     private void ReturnToPreviousScene()
     {
+        // FIXED: Check if in free roam mode
+        if (FreeRoamManager.IsFreeRoamActive)
+        {
+            Debug.Log("[TerminalPuzzle3] Free roam mode - returning to TitleScene");
+            
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.TransitionToScene("TitleScene");
+            }
+            else
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
+            }
+            return;
+        }
+
+        // Normal mode - mark dungeon as completed and return to overworld
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.MarkDungeonCompleted("dungeon3");
+        }
+        
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(previousSceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
+        }
+        
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-        UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)

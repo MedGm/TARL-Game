@@ -72,6 +72,21 @@ public class GameManager : MonoBehaviour
         {
             Instance = this;
             DontDestroyOnLoad(gameObject);
+            
+            // REMOVED: No more save/load functionality
+            // LoadDungeonProgress();
+            
+            // FIXED: Always start fresh with 0 keys and no completed dungeons
+            keysCollected = 0;
+            soapTasksPlayed = 0;
+            soapTask1Count = 0;
+            soapTask2Count = 0;
+            soapTask3Count = 0;
+            completedDungeons.Clear();
+            lastBubbleSpawnedForKeyCount = 0;
+            currentTaskLevel = 0;
+            
+            Debug.Log($"[GameManager] Initialized fresh game with {keysCollected} keys, currentTaskLevel: {currentTaskLevel}");
         }
         else
         {
@@ -91,13 +106,52 @@ public class GameManager : MonoBehaviour
             // Reset bubble spawn tracker so a new bubble can spawn for the new key
             lastBubbleSpawnedForKeyCount = keysCollected - 1;
 
+            // ADDED: Check if all dungeons are completed and save to Firebase
+            if (keysCollected >= 3 && GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            {
+                Debug.Log("[GameManager] All dungeons completed! Triggering Firebase save...");
+                GameSessionManager.Instance.CompleteTest();
+            }
+
+            // FIXED: Force update all dungeon entrances in the scene
+            StartCoroutine(UpdateDungeonEntrancesAfterDelay(0.1f));
+
             // Bubble will be spawned after returning to overworldScene (see TrySpawnBubbleSoapChaser)
+            Debug.Log($"[GameManager] Dungeon {dungeonId} marked as completed. Total keys: {keysCollected}");
         }
     }
 
+    // NEW: Update all dungeon entrances to reflect new completion status
+    private System.Collections.IEnumerator UpdateDungeonEntrancesAfterDelay(float delay)
+    {
+        yield return new WaitForSeconds(delay);
+        
+        // Find all DungeonEntrance components in the scene and refresh their status
+        DungeonEntrance[] entrances = FindObjectsByType<DungeonEntrance>(FindObjectsSortMode.None);
+        foreach (DungeonEntrance entrance in entrances)
+        {
+            // Force the entrance to update its display
+            if (entrance != null && entrance.gameObject.activeInHierarchy)
+            {
+                // This will trigger a status update if player is nearby
+                entrance.enabled = false;
+                entrance.enabled = true;
+            }
+        }
+        
+        Debug.Log($"[GameManager] Updated {entrances.Length} dungeon entrances");
+    }
+
+    // REMOVED: Delete all save/load methods
+    // private void SaveDungeonProgress() { ... }
+    // private void LoadDungeonProgress() { ... }
+
+    // SIMPLIFIED: Reset method no longer needs to clear PlayerPrefs
+    // (Removed duplicate ResetAllProgress)
+
     public void TrySpawnBubbleSoapChaser()
     {
-        // Only spawn in overworldScene and only if a new key was collected since last spawn
+        // FIXED: Only spawn in overworldScene and only if a new key was collected since last spawn
         if (UnityEngine.SceneManagement.SceneManager.GetActiveScene().name != "overworldScene")
             return;
 
@@ -280,5 +334,24 @@ public class GameManager : MonoBehaviour
     public void OnoverworldSceneLoaded()
     {
         DisableWarningTextIfExists();
+    }
+
+    // NEW: Public method to reset all progress (for testing or new game)
+    public void ResetAllProgress()
+    {
+        completedDungeons.Clear();
+        keysCollected = 0;
+        soapTasksPlayed = 0;
+        soapTask1Count = 0;
+        soapTask2Count = 0;
+        soapTask3Count = 0;
+        soapTaskResults.Clear();
+        completedPlaceValueTasks.Clear();
+        hasShield = false;
+        currentTaskLevel = 0;
+        currentProgression = ProgressionStage.Overworld;
+        lastBubbleSpawnedForKeyCount = 0;
+        
+        Debug.Log("[GameManager] All progress reset to fresh state");
     }
 }

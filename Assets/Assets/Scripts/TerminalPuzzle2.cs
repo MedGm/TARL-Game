@@ -81,8 +81,24 @@ public class TerminalPuzzle2 : MonoBehaviour
 
     private void GenerateNewPuzzle()
     {
-        if (generateRandomNumber)
+        // Check if in test mode and get configuration
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            string difficulty = "medium"; // Second dungeon = medium
+            var config = GameSessionManager.Instance.GetWriteNumberConfig(difficulty);
+            if (config != null)
+            {
+                numberToConvert = config.number;
+                timeLimit = config.time;
+                maxAttempts = config.attemptsAllowed;
+                generateRandomNumber = false;
+                Debug.Log($"[TerminalPuzzle2] Using test config: number={config.number}, time={config.time}, attempts={config.attemptsAllowed}");
+            }
+        }
+        else if (generateRandomNumber)
+        {
             numberToConvert = Random.Range(minRandomNumber, maxRandomNumber + 1);
+        }
 
         if (displayNumberText != null)
             displayNumberText.text = numberToConvert.ToString();
@@ -280,6 +296,26 @@ public class TerminalPuzzle2 : MonoBehaviour
             DisableAllButtons();
             puzzleSolved = true;
             StartCoroutine(DisappearTerminal());
+
+            // Save result to session manager if in test mode
+            if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            {
+                List<string> userAnswer = new List<string>();
+                foreach (int idx in gapIndices)
+                {
+                    userAnswer.Add(selectedWords[idx]);
+                }
+
+                GameSessionManager.Instance.RegisterTaskResult(
+                    "writenumber",
+                    "medium",
+                    userAnswer,
+                    true,
+                    maxAttempts - remainingAttempts + 1,
+                    100
+                );
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
         }
         else
         {
@@ -294,6 +330,25 @@ public class TerminalPuzzle2 : MonoBehaviour
 
             if (remainingAttempts <= 0)
             {
+                // Save failed result
+                if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+                {
+                    List<string> userAnswer = new List<string>();
+                    foreach (int idx in gapIndices)
+                    {
+                        userAnswer.Add(selectedWords[idx]);
+                    }
+
+                    GameSessionManager.Instance.RegisterTaskResult(
+                        "writenumber",
+                        "medium",
+                        userAnswer,
+                        false,
+                        maxAttempts,
+                        0
+                    );
+                }
+
                 AllAttemptsUsed();
                 return;
             }
@@ -321,8 +376,9 @@ public class TerminalPuzzle2 : MonoBehaviour
         else
             gameObject.SetActive(false);
 
-        if (GameManager.Instance != null)
-            GameManager.Instance.MarkDungeonCompleted("dungeon2");
+        // REMOVED: Don't mark dungeon as completed here anymore
+        // if (GameManager.Instance != null)
+        //     GameManager.Instance.MarkDungeonCompleted("dungeon2");
 
         ShowKeyAcquiredOverlay();
     }
@@ -355,8 +411,38 @@ public class TerminalPuzzle2 : MonoBehaviour
 
     private void ReturnToPreviousScene()
     {
+        // FIXED: Check if in free roam mode
+        if (FreeRoamManager.IsFreeRoamActive)
+        {
+            Debug.Log("[TerminalPuzzle2] Free roam mode - returning to TitleScene");
+            
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.TransitionToScene("TitleScene");
+            }
+            else
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
+            }
+            return;
+        }
+
+        // Normal mode - mark dungeon as completed and return to overworld
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.MarkDungeonCompleted("dungeon2");
+        }
+
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(previousSceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
+        }
+
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-        UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
@@ -373,34 +459,34 @@ public class TerminalPuzzle2 : MonoBehaviour
     {
         if (number == 0)
             return "zéro";
-            
-        string[] units = { "", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix", 
+
+        string[] units = { "", "un", "deux", "trois", "quatre", "cinq", "six", "sept", "huit", "neuf", "dix",
                            "onze", "douze", "treize", "quatorze", "quinze", "seize", "dix-sept", "dix-huit", "dix-neuf" };
-                           
+
         string[] tens = { "", "", "vingt", "trente", "quarante", "cinquante", "soixante", "soixante-dix", "quatre-vingt", "quatre-vingt-dix" };
-        
+
         string words = "";
-        
+
         if ((number / 1000) > 0)
         {
             if (number / 1000 == 1)
                 words += "mille ";
             else
                 words += units[number / 1000] + " mille ";
-                
+
             number %= 1000;
         }
-        
+
         if ((number / 100) > 0)
         {
             if (number / 100 == 1)
                 words += "cent ";
             else
                 words += units[number / 100] + " cent ";
-                
+
             number %= 100;
         }
-        
+
         if (number > 0)
         {
             if (number < 20)
@@ -411,7 +497,7 @@ public class TerminalPuzzle2 : MonoBehaviour
             {
                 int ten = number / 10;
                 int unit = number % 10;
-                
+
                 if (ten == 7)
                 {
                     words += "soixante";
@@ -435,7 +521,7 @@ public class TerminalPuzzle2 : MonoBehaviour
                 else
                 {
                     words += tens[ten];
-                    
+
                     if (unit == 1 && (ten == 2 || ten == 3 || ten == 4 || ten == 5 || ten == 6))
                     {
                         words += "-et-un";
@@ -447,7 +533,7 @@ public class TerminalPuzzle2 : MonoBehaviour
                 }
             }
         }
-        
+
         return words.Trim();
     }
 
@@ -455,31 +541,31 @@ public class TerminalPuzzle2 : MonoBehaviour
     {
         if (number == 0)
             return "zero";
-        
+
         string words = "";
-        
+
         if ((number / 1000) > 0)
         {
             words += ConvertNumberToWords(number / 1000) + " thousand ";
             number %= 1000;
         }
-        
+
         if ((number / 100) > 0)
         {
             words += ConvertNumberToWords(number / 100) + " hundred ";
             number %= 100;
         }
-        
+
         if (number > 0)
         {
             if (words != "")
                 words += "and ";
-            
+
             string[] units = { "zero", "one", "two", "three", "four", "five", "six", "seven", "eight", "nine", "ten",
                                "eleven", "twelve", "thirteen", "fourteen", "fifteen", "sixteen", "seventeen", "eighteen", "nineteen" };
-                               
+
             string[] tens = { "", "", "twenty", "thirty", "forty", "fifty", "sixty", "seventy", "eighty", "ninety" };
-            
+
             if (number < 20)
             {
                 words += units[number];
@@ -493,7 +579,7 @@ public class TerminalPuzzle2 : MonoBehaviour
                 }
             }
         }
-        
+
         return words.Trim();
     }
 

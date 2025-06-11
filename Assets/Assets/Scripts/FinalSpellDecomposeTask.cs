@@ -4,6 +4,7 @@ using UnityEngine.UI;
 using System.Collections;
 using System.Collections.Generic;
 using UnityEngine.EventSystems;
+using System;
 
 public class FinalSpellDecomposeTask : MonoBehaviour
 {
@@ -37,15 +38,40 @@ public class FinalSpellDecomposeTask : MonoBehaviour
     public string finalSceneName = "FinalScene";
     public string[] placeValueLabels = { "1000", "100", "10", "1" }; // Thousands, hundreds, tens, ones
 
-    // State tracking 
+    [Header("Multi-Level Configuration")]
+    public int[] difficultyRanges = { 2000, 5000, 9999 }; // Easy: 0-2000, Medium: 2000-5000, Hard: 5000-9999
+    public string[] difficultyNames = { "easy", "medium", "hard" };
+    
+    private int currentDifficultyIndex = 0;
+    private int completedLevels = 0;
+    private List<DecompositionResult> results = new List<DecompositionResult>();
+
+    [Serializable]
+    public class DecompositionResult
+    {
+        public string difficulty;
+        public int number;
+        public List<int> playerAnswer;
+        public bool isCorrect;
+        public int attemptsUsed;
+        public float timeSpent;
+    }
+
+    private float levelStartTime;
+    private int currentAttempts = 0;
+
     private string originalNumber = "";
     private Dictionary<int, string> placedDigits = new Dictionary<int, string>(); // maps zone index to placed digit
     private bool puzzleSolved = false;
 
     private void Start()
     {
-        SetupBook();
-        SetupDecompositionTask();
+        // Start with the first difficulty level
+        currentDifficultyIndex = 0;
+        completedLevels = 0;
+        results.Clear();
+        
+        SetupCurrentLevel();
         
         // Configure UI buttons
         if (submitButton != null)
@@ -115,27 +141,97 @@ public class FinalSpellDecomposeTask : MonoBehaviour
 
     private void HandleTimeExpired()
     {
-        Debug.Log("[FinalSpellDecomposeTask] Time expired! The wizard got bored and opened the portal.");
+        Debug.Log($"[FinalSpellDecomposeTask] Time expired for {difficultyNames[currentDifficultyIndex]} level!");
         
-        // Show message to the player
+        // Save current level as failed
+        SaveCurrentLevelResult(false);
+        
+        // Show appropriate message
         if (feedbackText != null)
         {
-            feedbackText.text = "Le magicien s'est lassé et a ouvert le portail pour vous !";
+            if (completedLevels > 0)
+            {
+                feedbackText.text = $"Temps écoulé ! Tu as complété {completedLevels} niveau(x). Le magicien ouvre le portail !";
+            }
+            else
+            {
+                feedbackText.text = "Le magicien s'est lassé et a ouvert le portail pour vous !";
+            }
         }
         
-        // Disable submit button
+        // End the task
+        EndTask();
+    }
+
+    private void SetupCurrentLevel()
+    {
+        levelStartTime = Time.time;
+        currentAttempts = 0;
+        
+        // Get difficulty configuration if in test mode
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            var config = GameSessionManager.Instance.GetFindCompositionConfig(difficultyNames[currentDifficultyIndex]);
+            if (config != null)
+            {
+                // Use configured number and time limit
+                originalNumber = config.number.ToString();
+                taskTimeLimit = config.time;
+                
+                Debug.Log($"[FinalSpellDecomposeTask] Using test config for {difficultyNames[currentDifficultyIndex]}: number={config.number}, time={config.time}s");
+            }
+            else
+            {
+                GenerateNumberForDifficulty();
+            }
+        }
+        else
+        {
+            GenerateNumberForDifficulty();
+        }
+
+        SetupBook();
+        SetupDecompositionTask();
+        
+        // Reset timer
+        remainingTime = taskTimeLimit;
+        isTimerRunning = true;
+        puzzleSolved = false;
+        
+        // Update UI
+        if (feedbackText != null)
+        {
+            feedbackText.text = $"Niveau {difficultyNames[currentDifficultyIndex].ToUpper()}: Décompose le nombre en vert en plaçant chaque chiffre à sa valeur correcte.";
+        }
+        
+        if (resultText != null)
+        {
+            resultText.gameObject.SetActive(false);
+        }
+        
         if (submitButton != null)
-            submitButton.interactable = false;
+        {
+            submitButton.interactable = true;
+        }
         
-        // Show next button to proceed
         if (nextButton != null)
-            nextButton.gameObject.SetActive(true);
+        {
+            nextButton.gameObject.SetActive(false);
+        }
+
+        UpdateTimerDisplay();
+    }
+
+    private void GenerateNumberForDifficulty()
+    {
+        System.Random rng = new System.Random();
+        int minRange = currentDifficultyIndex == 0 ? 1000 : difficultyRanges[currentDifficultyIndex - 1];
+        int maxRange = difficultyRanges[currentDifficultyIndex];
         
-        // Show the decomposition result
-        ShowDecompositionResult();
+        int number = rng.Next(minRange, maxRange + 1);
+        originalNumber = number.ToString();
         
-        // Mark puzzle as solved
-        puzzleSolved = true;
+        Debug.Log($"[FinalSpellDecomposeTask] Generated {difficultyNames[currentDifficultyIndex]} number: {originalNumber} (range: {minRange}-{maxRange})");
     }
 
     private void SetupBook()
@@ -241,6 +337,8 @@ public class FinalSpellDecomposeTask : MonoBehaviour
 
     private void CheckAnswer()
     {
+        currentAttempts++;
+        
         // First check if all zones have been filled
         if (placedDigits.Count < 4)
         {
@@ -264,51 +362,214 @@ public class FinalSpellDecomposeTask : MonoBehaviour
         Debug.Log($"[FinalSpellDecomposeTask] Placed values: {placedValues}");
 
         // Check if each digit is placed in the correct place value position
-        bool correct = true;
-        for (int i = 0; i < originalNumber.Length; i++)
-        {
-            // Check if this place value has the correct digit
-            if (!placedDigits.TryGetValue(i, out string placedDigit) || 
-                placedDigit != originalNumber[i].ToString())
-            {
-                correct = false;
-                Debug.Log($"[FinalSpellDecomposeTask] Mismatch at position {i}: expected {originalNumber[i]}, got {placedDigit ?? "nothing"}");
-                break;
-            }
-        }
+        bool correct = ValidatePlayerAnswer();
 
         // Display the result
         if (correct)
         {
-            // Stop the timer
-            isTimerRunning = false;
-
-            // Success!
-            puzzleSolved = true;
+            // Save successful result
+            SaveCurrentLevelResult(true);
             
-            Debug.Log("[FinalSpellDecomposeTask] CORRECT ANSWER! Puzzle solved.");
-            
-            if (feedbackText != null)
-                feedbackText.text = "Bravo ! La décomposition est correcte !";
-            
-            // Disable submit button
-            if (submitButton != null)
-                submitButton.interactable = false;
+            // Check if we have more levels
+            if (currentDifficultyIndex < difficultyNames.Length - 1)
+            {
+                // Move to next difficulty
+                currentDifficultyIndex++;
+                completedLevels++;
                 
-            // Show next button to proceed
-            if (nextButton != null)
-                nextButton.gameObject.SetActive(true);
+                if (feedbackText != null)
+                    feedbackText.text = $"Bravo ! Niveau {difficultyNames[currentDifficultyIndex - 1]} complété ! Passons au niveau {difficultyNames[currentDifficultyIndex]}...";
                 
-            // Show the decomposition result
-            ShowDecompositionResult();
+                // Start next level after a delay
+                StartCoroutine(StartNextLevelAfterDelay(2f));
+            }
+            else
+            {
+                // All levels completed
+                completedLevels++;
+                SaveCurrentLevelResult(true);
+                
+                if (feedbackText != null)
+                    feedbackText.text = "Félicitations ! Tu as complété tous les niveaux !";
+                
+                EndTask();
+            }
         }
         else
         {
-            // Incorrect answer
-            Debug.Log("[FinalSpellDecomposeTask] INCORRECT. Digits not placed in correct place values.");
+            // Get attempts allowed from test config
+            int maxAttempts = 3; // Default
+            if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            {
+                var config = GameSessionManager.Instance.GetFindCompositionConfig(difficultyNames[currentDifficultyIndex]);
+                if (config != null)
+                {
+                    maxAttempts = config.attemptsAllowed;
+                }
+            }
             
-            if (feedbackText != null)
-                feedbackText.text = "Ce n'est pas la bonne décomposition. Essaie encore.";
+            if (currentAttempts >= maxAttempts)
+            {
+                // Failed this level
+                SaveCurrentLevelResult(false);
+                
+                if (feedbackText != null)
+                    feedbackText.text = $"Tentatives épuisées pour le niveau {difficultyNames[currentDifficultyIndex]}. Le magicien ouvre le portail !";
+                
+                EndTask();
+            }
+            else
+            {
+                if (feedbackText != null)
+                    feedbackText.text = $"Ce n'est pas la bonne décomposition. Essaie encore. ({currentAttempts}/{maxAttempts} tentatives)";
+            }
+        }
+    }
+
+    private bool ValidatePlayerAnswer()
+    {
+        // Check if all digits are placed correctly
+        if (placedDigits.Count != originalNumber.Length)
+            return false;
+            
+        for (int i = 0; i < originalNumber.Length; i++)
+        {
+            if (!placedDigits.ContainsKey(i))
+                return false;
+                
+            if (placedDigits[i] != originalNumber[i].ToString())
+                return false;
+        }
+        
+        return true;
+    }
+
+    private IEnumerator StartNextLevelAfterDelay(float delay)
+    {
+        // Disable interactions during transition
+        if (submitButton != null)
+            submitButton.interactable = false;
+        
+        yield return new WaitForSeconds(delay);
+        
+        SetupCurrentLevel();
+    }
+
+    private void SaveCurrentLevelResult(bool isCorrect)
+    {
+        float timeSpent = Time.time - levelStartTime;
+        
+        // Create player answer from placed digits
+        List<int> playerAnswer = new List<int>();
+        for (int i = 0; i < originalNumber.Length; i++)
+        {
+            if (placedDigits.TryGetValue(i, out string digit))
+            {
+                if (int.TryParse(digit, out int digitValue))
+                {
+                    // Store place value decomposition (digit * place value)
+                    int placeValue = (int)Mathf.Pow(10, originalNumber.Length - 1 - i);
+                    playerAnswer.Add(digitValue * placeValue);
+                }
+            }
+        }
+        
+        var result = new DecompositionResult
+        {
+            difficulty = difficultyNames[currentDifficultyIndex],
+            number = int.Parse(originalNumber),
+            playerAnswer = playerAnswer,
+            isCorrect = isCorrect,
+            attemptsUsed = currentAttempts,
+            timeSpent = timeSpent
+        };
+        
+        results.Add(result);
+        
+        // Save to session manager if in test mode
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            int score = isCorrect ? 100 : 0; // You can customize scoring logic
+            GameSessionManager.Instance.RegisterTaskResult(
+                "findcomposition", 
+                difficultyNames[currentDifficultyIndex], 
+                playerAnswer, 
+                isCorrect, 
+                currentAttempts, 
+                score
+            );
+            
+            if (isCorrect)
+            {
+                GameSessionManager.Instance.UpdateTotalScore(score);
+            }
+        }
+        
+        Debug.Log($"[FinalSpellDecomposeTask] Saved result for {difficultyNames[currentDifficultyIndex]}: {isCorrect}, attempts: {currentAttempts}, time: {timeSpent:F1}s");
+    }
+
+    private void EndTask()
+    {
+        // Stop the timer
+        isTimerRunning = false;
+        puzzleSolved = true;
+        
+        // Disable submit button
+        if (submitButton != null)
+            submitButton.interactable = false;
+        
+        // Show next button to proceed
+        if (nextButton != null)
+            nextButton.gameObject.SetActive(true);
+        
+        // Show final decomposition result
+        ShowDecompositionResult();
+        
+        // ADDED: Complete the test and save to Firebase
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            Debug.Log("[FinalSpellDecomposeTask] Test completed, saving results to Firebase");
+            GameSessionManager.Instance.CompleteTest();
+        }
+        
+        // Log final results
+        Debug.Log($"[FinalSpellDecomposeTask] Task completed. Levels completed: {completedLevels}/{difficultyNames.Length}");
+        foreach (var result in results)
+        {
+            Debug.Log($"[FinalSpellDecomposeTask] {result.difficulty}: {result.isCorrect} in {result.attemptsUsed} attempts, {result.timeSpent:F1}s");
+        }
+
+        // FIXED: Check if in free roam mode
+        if (FreeRoamManager.IsFreeRoamActive)
+        {
+            // In free roam mode, return to title scene
+            if (nextButton != null)
+            {
+                nextButton.onClick.RemoveAllListeners();
+                nextButton.onClick.AddListener(() => {
+                    Debug.Log("[FinalSpellDecomposeTask] Free roam mode - returning to TitleScene");
+                    
+                    if (SceneTransition.Instance != null)
+                    {
+                        SceneTransition.Instance.TransitionToScene("TitleScene");
+                    }
+                    else
+                    {
+                        UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
+                    }
+                });
+            }
+        }
+        else
+        {
+            // Normal mode - return to final scene
+            if (nextButton != null)
+            {
+                nextButton.onClick.RemoveAllListeners();
+                nextButton.onClick.AddListener(() => {
+                    UnityEngine.SceneManagement.SceneManager.LoadScene(finalSceneName);
+                });
+            }
         }
     }
 

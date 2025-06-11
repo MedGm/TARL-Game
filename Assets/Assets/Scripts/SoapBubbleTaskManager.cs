@@ -15,7 +15,7 @@ public class SoapBubbleTaskManager : MonoBehaviour
 
     [Header("Settings")]
     public string[] placeValueNames = {
-        "Ones", "Tens", "Hundreds", "Thousands", "TenThousands", "HundredThousands", "Millions"
+        "Unités", "Dizaines", "Centaines", "Milliers", "DixMilliers", "CentMilliers", "Millions"
     };
     public float promptDuration = 5f; // Increased prompt time
     public float selectionTime = 10f;
@@ -50,18 +50,18 @@ public class SoapBubbleTaskManager : MonoBehaviour
             case 1:
                 totalTasks = 1;
                 selectionTime = 12f;
-                placeValueNames = new string[] { "Ones", "Tens", "Hundreds" };
+                placeValueNames = new string[] { "Unités", "Dizaines", "Centaines" };
                 break;
             case 2:
                 totalTasks = 2;
                 selectionTime = 10f;
-                placeValueNames = new string[] { "Ones", "Tens", "Hundreds", "Thousands", "TenThousands" };
+                placeValueNames = new string[] { "Unités", "Dizaines", "Centaines", "Milliers", "DixMilliers" };
                 break;
             case 3:
             default:
                 totalTasks = 3;
                 selectionTime = 8f;
-                placeValueNames = new string[] { "Ones", "Tens", "Hundreds", "Thousands", "TenThousands", "HundredThousands", "Millions" };
+                placeValueNames = new string[] { "Unités", "Dizaines", "Centaines", "Milliers", "DixMilliers", "CentMilliers", "Millions" };
                 break;
         }
 
@@ -213,7 +213,7 @@ public class SoapBubbleTaskManager : MonoBehaviour
         Debug.Log($"[SoapBubbleTaskManager] Number: {displayedNumber}, looking for digit {digit} which appears at positions: {string.Join(", ", matchingIndices)}");
         Debug.Log($"[SoapBubbleTaskManager] Need to pop these place values: {string.Join(", ", matchingIndices.Select(idx => placeValueNames[idx]))}");
 
-        // Prompt: "Dans 4,582, pop la bulle correspondant à la position du chiffre 8."
+        // FIXED: Set prompt and keep it visible throughout the task
         if (promptText != null)
         {
             if (matchingIndices.Count == 1)
@@ -226,13 +226,15 @@ public class SoapBubbleTaskManager : MonoBehaviour
                 promptText.text = $"Dans <b>{displayedNumber}</b>, pop <b>toutes</b> les bulles correspondant à la position du chiffre <b>{digit}</b>.";
             }
             promptText.gameObject.SetActive(true);
+            // REMOVED: Do not clear the prompt text anymore
         }
 
         // Wait for prompt duration
         yield return new WaitForSeconds(promptDuration);
 
-        if (promptText != null)
-            promptText.text = "";
+        // REMOVED: No longer clear the prompt text here
+        // if (promptText != null)
+        //     promptText.text = "";
 
         // FIXED: Convert string indices to place value indices
         HashSet<int> correctIndices = new HashSet<int>(matchingIndices);
@@ -401,28 +403,75 @@ public class SoapBubbleTaskManager : MonoBehaviour
         string results = string.Join(", ", taskResults.Select(r => r ? "Success" : "Fail"));
         Debug.Log($"[SoapBubbleTaskManager] Task results so far: [{results}], Success={successCount}, Fail={failCount}");
 
+        // Save to session manager if in test mode
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            // Determine difficulty based on current soap task
+            string difficulty = "easy"; // SoapScene = easy
+            bool wasSuccessful = taskResults.Count > 0 && taskResults[taskResults.Count - 1];
+            
+            // Create units answer for the displayed number
+            var unitsAnswer = new AnswerModel.IdentifyUnitsAnswers.UnitsAnswer
+            {
+                units = displayedNumber % 10,
+                tens = (displayedNumber / 10) % 10,
+                hundreds = (displayedNumber / 100) % 10,
+                thousands = (displayedNumber / 1000) % 10
+            };
+            
+            GameSessionManager.Instance.RegisterTaskResult(
+                "identifyunits", 
+                difficulty, 
+                unitsAnswer, 
+                wasSuccessful, 
+                1, 
+                wasSuccessful ? 100 : 0
+            );
+            
+            if (wasSuccessful)
+            {
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
+        }
+
         if (completedTasks < totalTasks)
         {
             StartCoroutine(StartNextTask());
         }
         else
         {
-            // Task finished, show neutral message and return to overworldScene after a delay
+            // FIXED: Only clear prompt when all tasks are finished
             if (promptText != null)
                 promptText.text = "Task finished!";
             if (timerText != null)
                 timerText.gameObject.SetActive(false);
 
-            // Use SceneManager.sceneLoaded to ensure GameManager's TrySpawnBubbleSoapChaser is called after returning
-            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-            StartCoroutine(ReturnTooverworldSceneAfterDelay(2.5f));
+            // FIXED: Check if in free roam mode and return to appropriate scene
+            string returnScene = FreeRoamManager.GetReturnScene();
+            Debug.Log($"[SoapBubbleTaskManager] Returning to: {returnScene} (Free roam active: {FreeRoamManager.IsFreeRoamActive})");
+
+            // Don't register scene loaded handler if returning to title scene
+            if (returnScene == "overworldScene")
+            {
+                UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
+            }
+            
+            StartCoroutine(ReturnToSceneAfterDelay(2.5f, returnScene));
         }
     }
 
-    private IEnumerator ReturnTooverworldSceneAfterDelay(float delay)
+    private IEnumerator ReturnToSceneAfterDelay(float delay, string sceneName)
     {
         yield return new WaitForSeconds(delay);
-        UnityEngine.SceneManagement.SceneManager.LoadScene(overworldSceneName);
+        
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(sceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+        }
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)

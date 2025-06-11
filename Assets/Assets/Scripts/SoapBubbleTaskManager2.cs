@@ -12,7 +12,7 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
     public TMP_Text timerText;
 
     public string[] placeValueNames = {
-        "Ones", "Tens", "Hundreds", "Thousands", "TenThousands", "HundredThousands", "Millions"
+        "Unités", "Dizaines", "Centaines", "Milliers", "DixMilliers", "CentMilliers", "Millions"
     };
     public float promptDuration = 5f;
     public float selectionTime = 10f;
@@ -42,15 +42,22 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
         
         Debug.Log($"[SoapBubbleTaskManager2] Generated number with distinct digits: {displayedNumber}");
 
-        // Set up bubble labels (digits from the number)
-        string numStr = displayedNumber.ToString("D" + digitCount);
+        // FIXED: Set up bubble labels to match place value positions
+        string numStr = displayedNumber.ToString();
         for (int i = 0; i < bubbleTexts.Length; i++)
         {
             if (i < digitCount)
             {
                 bubbleButtons[i].gameObject.SetActive(true);
                 if (bubbleTexts[i] != null)
-                    bubbleTexts[i].text = numStr[i].ToString();
+                {
+                    // FIXED: Button i should show the digit that corresponds to place value i
+                    // Place value 0 = Ones = rightmost digit
+                    // Place value 1 = Tens = second from right, etc.
+                    char digitAtThisPlaceValue = numStr[digitCount - 1 - i];
+                    bubbleTexts[i].text = digitAtThisPlaceValue.ToString();
+                    Debug.Log($"[SoapBubbleTaskManager2] Button {i} ({placeValueNames[i]}) shows digit {digitAtThisPlaceValue}");
+                }
             }
             else
             {
@@ -104,32 +111,32 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
         string numStr = displayedNumber.ToString();
         int digitCount = numStr.Length;
 
-        // Only pick a place value that exists in the number
-        int stringIdx = Random.Range(0, digitCount);
+        // Pick a random place value from the available ones
+        int targetPlaceValueIndex = Random.Range(0, digitCount);
+        string placeName = placeValueNames[targetPlaceValueIndex];
         
-        // FIXED: Convert the string index to the correct place value index
-        // For example, with "1234", 
-        // stringIdx=0 (digit '1') should map to placeIdx=3 (Thousands)
-        // stringIdx=3 (digit '4') should map to placeIdx=0 (Ones)
-        int placeIdx = digitCount - 1 - stringIdx;
-        string placeName = placeValueNames[placeIdx];
+        // FIXED: Get the actual digit at that place value position
+        char targetDigit = numStr[digitCount - 1 - targetPlaceValueIndex];
         
-        // Debug the selected position for troubleshooting
-        Debug.Log($"[SoapBubbleTaskManager2] Number: {displayedNumber}, targeting digit {numStr[stringIdx]} at string position {stringIdx}, which is place value {placeIdx} ({placeName})");
+        Debug.Log($"[SoapBubbleTaskManager2] Number: {displayedNumber}, targeting place value {targetPlaceValueIndex} ({placeName}), which has digit {targetDigit}");
+        Debug.Log($"[SoapBubbleTaskManager2] Button {targetPlaceValueIndex} should be clicked (it shows digit {targetDigit})");
 
+        // FIXED: Set prompt and keep it visible throughout the task
         if (promptText != null)
         {
             promptText.text = $"Dans <b>{displayedNumber}</b>, pop la bulle du chiffre à la position <b>{placeName}</b>.";
             promptText.gameObject.SetActive(true);
+            // REMOVED: Do not clear the prompt text anymore
         }
 
         yield return new WaitForSeconds(promptDuration);
 
-        if (promptText != null)
-            promptText.text = "";
+        // REMOVED: No longer clear the prompt text here
+        // if (promptText != null)
+        //     promptText.text = "";
 
-        // FIXED: The current target is now the place value index (not string index)
-        currentTargetIndex = placeIdx;
+        // The current target is the place value index where we want the click
+        currentTargetIndex = targetPlaceValueIndex;
 
         for (int i = 0; i < bubbleButtons.Length; i++)
         {
@@ -138,7 +145,7 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
             
             if (i == currentTargetIndex && i < digitCount)
             {
-                Debug.Log($"[SoapBubbleTaskManager2] Button {i} ({placeValueNames[i]}) is the CORRECT button");
+                Debug.Log($"[SoapBubbleTaskManager2] Button {i} ({placeValueNames[i]}) is the CORRECT button - shows digit {targetDigit}");
                 bubbleButtons[i].onClick.AddListener(() => {
                     Debug.Log($"[SoapBubbleTaskManager2] Clicked correct button {capturedIdx} ({placeValueNames[capturedIdx]})");
                     CorrectBubbleClicked();
@@ -249,9 +256,34 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
 
         completedTasks++;
 
-        // ADDED: Show success/failure message
-        if (promptText != null)
-            promptText.text = success ? "Bravo, tu as réussi !" : "Raté !";
+        // Save to session manager if in test mode
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            string difficulty = "medium"; // SoapScene2 = medium
+            
+            // Create units answer for the displayed number
+            var unitsAnswer = new AnswerModel.IdentifyUnitsAnswers.UnitsAnswer
+            {
+                units = displayedNumber % 10,
+                tens = (displayedNumber / 10) % 10,
+                hundreds = (displayedNumber / 100) % 10,
+                thousands = (displayedNumber / 1000) % 10
+            };
+            
+            GameSessionManager.Instance.RegisterTaskResult(
+                "identifyunits", 
+                difficulty, 
+                unitsAnswer, 
+                success, 
+                1, 
+                success ? 100 : 0
+            );
+            
+            if (success)
+            {
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
+        }
 
         if (completedTasks < totalTasks)
         {
@@ -261,26 +293,47 @@ public class SoapBubbleTaskManager2 : MonoBehaviour
         else
         {
             Debug.Log("[SoapBubbleTaskManager2] All tasks completed");
+            // FIXED: Only clear prompt when all tasks are finished
             if (promptText != null)
                 promptText.text = success ? "Bravo, tu as terminé !" : "Task finished!";
             if (timerText != null)
                 timerText.gameObject.SetActive(false);
 
-            UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-            StartCoroutine(ReturnTooverworldSceneAfterDelay(2.5f));
+            // FIXED: Check if in free roam mode and return to appropriate scene
+            string returnScene = FreeRoamManager.GetReturnScene();
+            Debug.Log($"[SoapBubbleTaskManager2] Returning to: {returnScene} (Free roam active: {FreeRoamManager.IsFreeRoamActive})");
+
+            // Don't register scene loaded handler if returning to title scene
+            if (returnScene == "overworldScene")
+            {
+                UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
+            }
+            
+            StartCoroutine(ReturnToSceneAfterDelay(2.5f, returnScene));
         }
     }
 
-    private IEnumerator ReturnTooverworldSceneAfterDelay(float delay)
+    private IEnumerator ReturnToSceneAfterDelay(float delay, string sceneName)
     {
         yield return new WaitForSeconds(delay);
-        UnityEngine.SceneManagement.SceneManager.LoadScene(overworldSceneName);
+        
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(sceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+        }
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)
     {
         if (scene.name == overworldSceneName)
         {
+            // FIXED: Re-add bubble spawning trigger
+            if (GameManager.Instance != null)
+                GameManager.Instance.TrySpawnBubbleSoapChaser();
             UnityEngine.SceneManagement.SceneManager.sceneLoaded -= OnoverworldSceneLoaded;
         }
     }

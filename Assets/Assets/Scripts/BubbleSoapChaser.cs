@@ -88,15 +88,24 @@ public class BubbleSoapChaser : MonoBehaviour
         if (!chasing) return;
         if (other.CompareTag("Player"))
         {
-            Debug.Log("[BubbleSoapChaser] Collided with player, loading SoapScene.");
             chasing = false;
             if (GameManager.Instance != null)
+            {
                 GameManager.Instance.DisableWarningTextIfExists();
-            Destroy(gameObject);
-            if (GameManager.Instance != null)
                 GameManager.Instance.lastPlayerPosition = other.transform.position;
-            // Use the assigned soapTaskSceneName
-            UnityEngine.SceneManagement.SceneManager.LoadScene(soapTaskSceneName);
+            }
+                
+            // FIXED: Use Pokemon-style transition for soap encounters (battle-like effect)
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.PokemonStyleTransition(soapTaskSceneName);
+            }
+            else
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene(soapTaskSceneName);
+            }
+            
+            Destroy(gameObject);
         }
     }
 }

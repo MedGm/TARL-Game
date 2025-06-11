@@ -9,6 +9,9 @@ public class OblivionPortalTrigger : MonoBehaviour
     [Header("References")]
     [SerializeField] private TMP_Text promptText;
 
+    [Header("UI Canvas")]
+    [SerializeField] private Canvas portalCanvas; // NEW: Add this field and assign in inspector
+
     [Header("Settings")]
     [SerializeField] private string portalSceneName = "PortalScene";
     [SerializeField] private float detectionRadius = 2f;
@@ -21,6 +24,7 @@ public class OblivionPortalTrigger : MonoBehaviour
     public DialogueCanvas wizardDialogueCanvas;
     public BubbleWizardNPC wizardNPC;
     public Canvas playerUICanvas; // Assign the player canvas in inspector
+    public Canvas minimapCanvas; // NEW: Assign the minimap canvas in inspector
     private bool wizardNearby = false;
 
     private bool playerNearby = false;
@@ -45,6 +49,10 @@ public class OblivionPortalTrigger : MonoBehaviour
         if (player != null)
             playerTransform = player.transform;
 
+        // FIXED: Ensure portal canvas starts disabled
+        if (portalCanvas != null)
+            portalCanvas.gameObject.SetActive(false);
+
         if (promptText != null)
             promptText.gameObject.SetActive(false);
 
@@ -60,12 +68,18 @@ public class OblivionPortalTrigger : MonoBehaviour
             });
         }
 
-        // Add player UI canvas to the dialogue canvas's list of canvases to hide
-        if (wizardDialogueCanvas != null && playerUICanvas != null)
+        // ENHANCED: Add both player UI canvas and minimap canvas to the dialogue canvas's list of canvases to hide
+        if (wizardDialogueCanvas != null)
         {
-            if (!wizardDialogueCanvas.canvasesToHide.Contains(playerUICanvas))
+            if (playerUICanvas != null && !wizardDialogueCanvas.canvasesToHide.Contains(playerUICanvas))
             {
                 wizardDialogueCanvas.canvasesToHide.Add(playerUICanvas);
+            }
+            
+            // NEW: Add minimap canvas to be hidden during dialogue
+            if (minimapCanvas != null && !wizardDialogueCanvas.canvasesToHide.Contains(minimapCanvas))
+            {
+                wizardDialogueCanvas.canvasesToHide.Add(minimapCanvas);
             }
         }
 
@@ -141,6 +155,10 @@ public class OblivionPortalTrigger : MonoBehaviour
 
     private void ShowPrompt()
     {
+        // FIXED: Enable portal canvas first
+        if (portalCanvas != null)
+            portalCanvas.gameObject.SetActive(true);
+            
         if (promptText != null)
             promptText.gameObject.SetActive(true);
         if (enterButton != null)
@@ -152,6 +170,10 @@ public class OblivionPortalTrigger : MonoBehaviour
 
     private void HidePrompt()
     {
+        // FIXED: Disable portal canvas when hiding prompt
+        if (portalCanvas != null)
+            portalCanvas.gameObject.SetActive(false);
+            
         if (promptText != null)
             promptText.gameObject.SetActive(false);
         if (enterButton != null)
@@ -203,9 +225,17 @@ public class OblivionPortalTrigger : MonoBehaviour
         }
         else
         {
-            // No wizard nearby, go directly to portal scene (should never happen in final design)
+            // No wizard nearby, go directly to portal scene
             Debug.Log("[OblivionPortalTrigger] No wizard dialogue, loading portal scene directly");
-            UnityEngine.SceneManagement.SceneManager.LoadScene(portalSceneName);
+            
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.PokemonStyleTransition(portalSceneName);
+            }
+            else
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene(portalSceneName);
+            }
         }
     }
 
@@ -213,7 +243,16 @@ public class OblivionPortalTrigger : MonoBehaviour
     {
         dialogueActive = false; // Reset dialogue flag
         yield return new WaitForSeconds(delay);
-        UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+        
+        // Use Pokemon-style transition for the final portal (dramatic effect)
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.PokemonStyleTransition(sceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(sceneName);
+        }
     }
 
     private void OnDrawGizmosSelected()

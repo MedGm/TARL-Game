@@ -143,7 +143,7 @@ public class DialogueCanvas : MonoBehaviour
         // Find and hide player canvas by tag if not already in the list
         if (!string.IsNullOrEmpty(playerCanvasTag))
         {
-            GameObject[] playerUIObjects = GameObject.FindGameObjectsWithTag(playerCanvasTag);
+                GameObject[] playerUIObjects = GameObject.FindGameObjectsWithTag(playerCanvasTag);
             foreach (GameObject obj in playerUIObjects)
             {
                 Canvas canvas = obj.GetComponent<Canvas>();

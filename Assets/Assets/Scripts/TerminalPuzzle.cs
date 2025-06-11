@@ -93,8 +93,20 @@ public class TerminalPuzzle : MonoBehaviour
     
     private void GenerateNewPuzzle()
     {
-        // Generate a random number if specified
-        if (generateRandomNumber)
+        // Check if in test mode and get configuration
+        if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+        {
+            string difficulty = "easy"; // First dungeon = easy
+            var config = GameSessionManager.Instance.GetWriteNumberConfig(difficulty);
+            if (config != null)
+            {
+                numberToConvert = config.number;
+                timeLimit = config.time;
+                maxAttempts = config.attemptsAllowed;
+                Debug.Log($"[TerminalPuzzle] Using test config: number={config.number}, time={config.time}, attempts={config.attemptsAllowed}");
+            }
+        }
+        else if (generateRandomNumber)
         {
             numberToConvert = Random.Range(minRandomNumber, maxRandomNumber + 1);
         }
@@ -384,6 +396,20 @@ public class TerminalPuzzle : MonoBehaviour
             // Make terminal disappear after delay
             StartCoroutine(DisappearTerminal());
             
+            // Save result to session manager if in test mode
+            if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            {
+                GameSessionManager.Instance.RegisterTaskResult(
+                    "writenumber", 
+                    "easy", 
+                    selectedWords, 
+                    true, 
+                    maxAttempts - remainingAttempts + 1, 
+                    100
+                );
+                GameSessionManager.Instance.UpdateTotalScore(100);
+            }
+            
             Debug.Log("Terminal puzzle solved correctly!");
         }
         else
@@ -395,6 +421,19 @@ public class TerminalPuzzle : MonoBehaviour
             // Check if we're out of attempts
             if (remainingAttempts <= 0)
             {
+                // Save failed result
+                if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+                {
+                    GameSessionManager.Instance.RegisterTaskResult(
+                        "writenumber", 
+                        "easy", 
+                        selectedWords, 
+                        false, 
+                        maxAttempts, 
+                        0
+                    );
+                }
+                
                 AllAttemptsUsed();
                 return;
             }
@@ -468,11 +507,11 @@ public class TerminalPuzzle : MonoBehaviour
             gameObject.SetActive(false);
         }
 
-        // Mark dungeon as completed and increment key count
-        if (GameManager.Instance != null)
-        {
-            GameManager.Instance.MarkDungeonCompleted("dungeon1");
-        }
+        // REMOVED: Don't mark dungeon as completed here anymore
+        // if (GameManager.Instance != null)
+        // {
+        //     GameManager.Instance.MarkDungeonCompleted("dungeon1");
+        // }
 
         // Show "key acquired" overlay
         ShowKeyAcquiredOverlay();
@@ -513,8 +552,38 @@ public class TerminalPuzzle : MonoBehaviour
 
     private void ReturnToPreviousScene()
     {
+        // FIXED: Check if in free roam mode
+        if (FreeRoamManager.IsFreeRoamActive)
+        {
+            Debug.Log("[TerminalPuzzle] Free roam mode - returning to TitleScene");
+            
+            if (SceneTransition.Instance != null)
+            {
+                SceneTransition.Instance.TransitionToScene("TitleScene");
+            }
+            else
+            {
+                UnityEngine.SceneManagement.SceneManager.LoadScene("TitleScene");
+            }
+            return;
+        }
+
+        // Normal mode - mark dungeon as completed and return to overworld
+        if (GameManager.Instance != null)
+        {
+            GameManager.Instance.MarkDungeonCompleted("dungeon1");
+        }
+        
+        if (SceneTransition.Instance != null)
+        {
+            SceneTransition.Instance.TransitionToScene(previousSceneName);
+        }
+        else
+        {
+            UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
+        }
+        
         UnityEngine.SceneManagement.SceneManager.sceneLoaded += OnoverworldSceneLoaded;
-        UnityEngine.SceneManagement.SceneManager.LoadScene(previousSceneName);
     }
 
     private void OnoverworldSceneLoaded(UnityEngine.SceneManagement.Scene scene, UnityEngine.SceneManagement.LoadSceneMode mode)

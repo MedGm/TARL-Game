@@ -10,6 +10,7 @@ public class DungeonEntrance : MonoBehaviour
     [Header("References")]
     [Tooltip("Assign your TMP_Text component here in the inspector")]
     [SerializeField] private TMP_Text promptText;
+    
     public Button enterButton; // Assign in Inspector
 
     [Header("Settings")]
@@ -98,9 +99,9 @@ public class DungeonEntrance : MonoBehaviour
             enterButton.gameObject.SetActive(false);
             enterButton.onClick.RemoveAllListeners();
             enterButton.onClick.AddListener(() => {
-                // No need to set dungeonId anymore
                 Debug.Log("[DungeonEntrance] Enter button pressed on: " + gameObject.name + " (scene=" + dungeonSceneName + ")");
-                DungeonManager.EnterDungeon(this);
+                // FIXED: Call EnterDungeon directly instead of going through DungeonManager
+                EnterDungeon();
             });
         }
 
@@ -117,6 +118,24 @@ public class DungeonEntrance : MonoBehaviour
 
         if (minimapIcon != null)
             minimapIcon.transform.SetParent(transform, false);
+
+        // ADDED: Ensure SceneTransition exists
+        EnsureSceneTransitionExists();
+    }
+
+    private void EnsureSceneTransitionExists()
+    {
+        if (SceneTransition.Instance == null)
+        {
+            Debug.LogWarning("[DungeonEntrance] SceneTransition not found, creating basic transition");
+            
+            // Create a simple fallback transition system
+            GameObject transitionGO = new GameObject("SceneTransition_Fallback");
+            DontDestroyOnLoad(transitionGO);
+            
+            // You could add a simplified transition script here if needed
+            // For now, we'll rely on the null check in EnterDungeon()
+        }
     }
 
     private void Update()
@@ -164,103 +183,141 @@ public class DungeonEntrance : MonoBehaviour
     private void ShowPrompt()
     {
         bool unlocked = true;
-        if (GameManager.Instance != null)
+        bool completed = false;
+        string promptMessage = frenchPromptMessage;
+        
+        // NEW: Check if we're in free roam mode - if so, bypass all restrictions
+        if (FreeRoamManager.ShouldBypassRestrictions())
         {
-            // Only allow entry if this dungeon is unlocked (optional: keep if you want sequential unlock)
-            if (dungeonSceneName == "DungeonScene")
-                unlocked = true;
-            else if (dungeonSceneName == "DungeonScene2")
-                unlocked = GameManager.Instance.IsDungeonCompleted("dungeon1");
-            else if (dungeonSceneName == "DungeonScene3")
-                unlocked = GameManager.Instance.IsDungeonCompleted("dungeon2");
-            // Add more if you have more dungeons/scenes
+            unlocked = true;
+            completed = false;
+            promptMessage = frenchPromptMessage + " (Mode Libre)";
+            Debug.Log("[DungeonEntrance] Free roam mode - all dungeons unlocked");
+        }
+        else if (GameManager.Instance != null)
+        {
+            // Normal game mode - check progression
+            string dungeonId = GetDungeonIdFromSceneName(dungeonSceneName);
+            completed = GameManager.Instance.IsDungeonCompleted(dungeonId);
+            
+            if (completed)
+            {
+                unlocked = false;
+                promptMessage = "Vous avez complété ce donjon !";
+            }
+            else
+            {
+                // Check if dungeon is unlocked based on progression
+                if (dungeonSceneName == "DungeonScene")
+                {
+                    unlocked = true; // First dungeon always unlocked
+                }
+                else if (dungeonSceneName == "DungeonScene2")
+                {
+                    unlocked = GameManager.Instance.IsDungeonCompleted("dungeon1");
+                }
+                else if (dungeonSceneName == "DungeonScene3")
+                {
+                    unlocked = GameManager.Instance.IsDungeonCompleted("dungeon2");
+                }
+                
+                if (!unlocked)
+                {
+                    promptMessage = "Ce donjon est verrouillé pour l'instant.";
+                }
+            }
+        }
+        else
+        {
+            // Fallback logic
+            unlocked = (dungeonSceneName == "DungeonScene");
+            if (!unlocked)
+            {
+                promptMessage = "Ce donjon est verrouillé pour l'instant.";
+            }
         }
 
         if (promptText != null)
         {
             Color c = promptText.color;
             c.a = 1f;
+            
+            // Change color based on status
+            if (completed)
+            {
+                c = Color.green; // Green for completed
+            }
+            else if (!unlocked)
+            {
+                c = Color.red; // Red for locked
+            }
+            else
+            {
+                c = textColor; // Normal color for available
+            }
+            
             promptText.color = c;
-            promptText.text = unlocked ? frenchPromptMessage : "Ce donjon est verrouillé pour l'instant.";
+            promptText.text = promptMessage;
             promptText.gameObject.SetActive(true);
             StartCoroutine(AnimateTextIn());
         }
+        
         if (enterButton != null)
         {
             enterButton.gameObject.SetActive(true);
-            enterButton.interactable = unlocked;
+            enterButton.interactable = unlocked && !completed; // Can only enter if unlocked and not completed
         }
     }
     
-    private IEnumerator AnimateTextIn()
+    // NEW: Helper method to convert scene name to dungeon ID
+    private string GetDungeonIdFromSceneName(string sceneName)
     {
-        if (promptText == null) yield break;
-        
-        // Starting with transparent text
-        Color startColor = promptText.color;
-        Color transparentColor = new Color(startColor.r, startColor.g, startColor.b, 0);
-        promptText.color = transparentColor;
-        
-        // Fade in text
-        float time = 0;
-        float duration = 0.5f;
-        while (time < duration)
+        switch (sceneName)
         {
-            time += Time.deltaTime;
-            float t = Mathf.Clamp01(time / duration);
-            
-            // Easing function for smoother animation
-            t = 1 - Mathf.Pow(1 - t, 3); // Ease out cubic
-            
-            promptText.color = Color.Lerp(transparentColor, startColor, t);
-            yield return null;
+            case "DungeonScene":
+                return "dungeon1";
+            case "DungeonScene2":
+                return "dungeon2";
+            case "DungeonScene3":
+                return "dungeon3";
+            default:
+                return "unknown";
         }
-        
-        // Ensure final color is set
-        promptText.color = startColor;
-    }
-
-    private void HidePrompt()
-    {
-        if (promptText != null)
-        {
-            promptText.gameObject.SetActive(false);
-            StopAllCoroutines();
-        }
-        if (enterButton != null)
-        {
-            enterButton.gameObject.SetActive(false);
-            enterButton.interactable = false;
-        }
-    }
-
-    private void UpdatePlayerNearby()
-    {
-        // Always recalculate playerNearby based on current distance
-        if (playerTransform != null)
-        {
-            float distance = Vector2.Distance(transform.position, playerTransform.position);
-            playerNearby = distance <= detectionRadius;
-        }
-    }
-
-    public void TryEnter()
-    {
-        if (playerNearby)
-            EnterDungeon();
     }
 
     private void EnterDungeon()
     {
-        Debug.Log("[DungeonEntrance] EnterDungeon called.");
-
-        // Save player position before entering
-        if (GameManager.Instance != null)
+        // NEW: In free roam mode, always allow entry
+        if (FreeRoamManager.ShouldBypassRestrictions())
         {
-            GameManager.Instance.lastPlayerPosition = playerTransform.position;
+            Debug.Log($"[DungeonEntrance] Free roam mode - entering {dungeonSceneName} without restrictions");
         }
-        Debug.Log("[DungeonEntrance] Loading scene: " + dungeonSceneName);
-        SceneManager.LoadScene(dungeonSceneName);
+        else if (GameManager.Instance != null)
+        {
+            // Normal mode - check restrictions
+            string dungeonId = GetDungeonIdFromSceneName(dungeonSceneName);
+            if (GameManager.Instance.IsDungeonCompleted(dungeonId))
+            {
+                Debug.Log($"[DungeonEntrance] Cannot enter {dungeonSceneName} - already completed!");
+                return;
+            }
+            
+            // Save player position and current dungeon before entering
+            GameManager.Instance.lastPlayerPosition = playerTransform.position;
+            GameManager.Instance.currentDungeonId = dungeonId;
+        }
+        
+        // FIXED: Call SceneTransition directly instead of going through DungeonManager
+        if (SceneTransition.Instance != null)
+        {
+            Debug.Log($"[DungeonEntrance] Using SceneTransition to load: {dungeonSceneName}");
+            SceneTransition.Instance.PokemonStyleTransition(dungeonSceneName); // Use dramatic transition for dungeon entry
+        }
+        else
+        {
+            Debug.LogWarning($"[DungeonEntrance] SceneTransition.Instance is null! Loading {dungeonSceneName} directly");
+            SceneManager.LoadScene(dungeonSceneName);
+        }
     }
     
     // Helper method to visualize the detection radius in the editor
@@ -268,5 +325,43 @@ public class DungeonEntrance : MonoBehaviour
     {
         Gizmos.color = Color.yellow;
         Gizmos.DrawWireSphere(transform.position, detectionRadius);
+    }
+
+    private void HidePrompt()
+    {
+        if (promptText != null)
+        {
+            promptText.gameObject.SetActive(false);
+        }
+        
+        if (enterButton != null)
+        {
+            enterButton.gameObject.SetActive(false);
+            enterButton.interactable = false;
+        }
+    }
+
+    private IEnumerator AnimateTextIn()
+    {
+        if (promptText == null) yield break;
+        
+        // Simple fade-in animation
+        Color originalColor = promptText.color;
+        Color transparentColor = new Color(originalColor.r, originalColor.g, originalColor.b, 0f);
+        
+        promptText.color = transparentColor;
+        
+        float duration = 0.3f;
+        float elapsed = 0f;
+        
+        while (elapsed < duration)
+        {
+            elapsed += Time.deltaTime;
+            float alpha = Mathf.Lerp(0f, originalColor.a, elapsed / duration);
+            promptText.color = new Color(originalColor.r, originalColor.g, originalColor.b, alpha);
+            yield return null;
+        }
+        
+        promptText.color = originalColor;
     }
 }
