@@ -225,7 +225,7 @@ TitleScene → overworldScene → DungeonScene(s) → SoapScene(s) → FinalSpel
 
 - ⚡ Smooth scene transitions
 - 📱 Mobile-friendly UI
-- 🇫🇷 French localization
+- 🇫🇷 French language
 - ✨ Visual feedback and animations
 - 🚥 Progress bars and checkpoints
 
