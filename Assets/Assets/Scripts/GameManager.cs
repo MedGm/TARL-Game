@@ -106,12 +106,12 @@ public class GameManager : MonoBehaviour
             // Reset bubble spawn tracker so a new bubble can spawn for the new key
             lastBubbleSpawnedForKeyCount = keysCollected - 1;
 
-            // ADDED: Check if all dungeons are completed and save to Firebase
-            if (keysCollected >= 3 && GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
-            {
-                Debug.Log("[GameManager] All dungeons completed! Triggering Firebase save...");
-                GameSessionManager.Instance.CompleteTest();
-            }
+            // REMOVED: Don't save to Firebase here anymore - only save at the very end
+            // if (keysCollected >= 3 && GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
+            // {
+            //     Debug.Log("[GameManager] All dungeons completed! Triggering Firebase save...");
+            //     GameSessionManager.Instance.CompleteTest();
+            // }
 
             // FIXED: Force update all dungeon entrances in the scene
             StartCoroutine(UpdateDungeonEntrancesAfterDelay(0.1f));

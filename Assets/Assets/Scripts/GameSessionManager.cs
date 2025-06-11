@@ -28,6 +28,10 @@ public class GameSessionManager : MonoBehaviour
     public int correctAnswersCount = 0;
     public int incorrectAnswersCount = 0;
     
+    // ADDED: Prevent duplicate saves
+    private bool testCompleted = false;
+    private bool testSaved = false;
+    
     [System.Serializable]
     public class TaskResult
     {
@@ -60,6 +64,14 @@ public class GameSessionManager : MonoBehaviour
         this.testStartTime = Time.time;
         this.totalScore = 0;
         this.taskResults.Clear();
+        
+        // ADDED: Reset completion flags
+        this.testCompleted = false;
+        this.testSaved = false;
+        this.totalAttemptsUsed = 0;
+        this.totalTimeSpent = 0f;
+        this.correctAnswersCount = 0;
+        this.incorrectAnswersCount = 0;
         
         Debug.Log($"[GameSessionManager] Started test mode: student={studentId}, test={testId}");
     }
@@ -225,8 +237,17 @@ public class GameSessionManager : MonoBehaviour
             return;
         }
         
+        if (testCompleted)
+        {
+            Debug.LogWarning("[GameSessionManager] Test already completed, ignoring duplicate call");
+            Debug.LogWarning($"[GameSessionManager] Duplicate call stack trace: {System.Environment.StackTrace}");
+            return;
+        }
+        
+        testCompleted = true;
         totalTimeSpent = Time.time - testStartTime;
         Debug.Log($"[GameSessionManager] Test completed! Total time: {totalTimeSpent}s, Total score: {totalScore}");
+        Debug.Log($"[GameSessionManager] CompleteTest called from: {System.Environment.StackTrace}");
         
         // Save to Firebase
         SaveTestResultsToFirebase();
@@ -241,13 +262,22 @@ public class GameSessionManager : MonoBehaviour
             return;
         }
 
+        if (testSaved)
+        {
+            Debug.LogWarning("[GameSessionManager] Test results already saved, ignoring duplicate call");
+            return;
+        }
+
         if (string.IsNullOrEmpty(studentId) || string.IsNullOrEmpty(testId) || string.IsNullOrEmpty(teacherId))
         {
             Debug.LogError("[GameSessionManager] Missing required data for saving test results");
             return;
         }
 
+        testSaved = true; // Mark as saved to prevent duplicates
+        
         Debug.Log($"[GameSessionManager] Saving test results for student {studentId}, test {testId}");
+        Debug.Log($"[GameSessionManager] Final statistics: correct={correctAnswersCount}, incorrect={incorrectAnswersCount}, attempts={totalAttemptsUsed}, time={totalTimeSpent}s");
 
         // Create answer model with all task results
         var answerModel = new AnswerModel
@@ -277,7 +307,7 @@ public class GameSessionManager : MonoBehaviour
             string taskType = parts[0];
             string difficulty = parts[1];
 
-            Debug.Log($"[GameSessionManager] Processing result: {taskType}_{difficulty} = {result.Value.isCorrect} (score: {result.Value.score})");
+            Debug.Log($"[GameSessionManager] Processing result: {taskType}_{difficulty} = {result.Value.isCorrect} (score: {result.Value.score}, attempts: {result.Value.attemptsUsed})");
 
             switch (taskType.ToLower())
             {
@@ -306,6 +336,7 @@ public class GameSessionManager : MonoBehaviour
         else
         {
             Debug.LogError("[GameSessionManager] Failed to save test results to Firebase");
+            testSaved = false; // Allow retry if save failed
         }
     }
     

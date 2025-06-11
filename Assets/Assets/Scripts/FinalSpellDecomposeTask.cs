@@ -525,10 +525,10 @@ public class FinalSpellDecomposeTask : MonoBehaviour
         // Show final decomposition result
         ShowDecompositionResult();
         
-        // ADDED: Complete the test and save to Firebase
+        // ONLY SAVE HERE: Complete the test and save to Firebase only at the very end
         if (GameSessionManager.Instance != null && GameSessionManager.Instance.isTestMode)
         {
-            Debug.Log("[FinalSpellDecomposeTask] Test completed, saving results to Firebase");
+            Debug.Log("[FinalSpellDecomposeTask] Final task completed, saving ALL results to Firebase");
             GameSessionManager.Instance.CompleteTest();
         }
         
